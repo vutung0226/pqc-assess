@@ -12,10 +12,10 @@ import shutil
 import sys
 
 from . import cbom, merge, report, runner
-from .detectors import gobinary, jar
+from .detectors import gobinary, jar, jose
 
 DOCKER_TOOLS = ("cryptoscan", "cbomkit", "qryx")
-LOCAL_TOOLS = ("jar", "gobin")
+LOCAL_TOOLS = ("jar", "gobin", "jose")
 
 
 def _write_outputs(out: str, target: str, inputs: list, status: dict) -> dict:
@@ -51,7 +51,7 @@ def cmd_scan(args) -> int:
             results.append(runner.run_cbomkit(staged, raw))
         if "qryx" in tools:
             results.extend(runner.run_qryx(staged, raw))
-        for name, mod in (("jar", jar), ("gobin", gobinary)):
+        for name, mod in (("jar", jar), ("gobin", gobinary), ("jose", jose)):
             if name in tools:
                 path = os.path.join(raw, f"{mod.TOOL}.cbom.json")
                 cbom.write(mod.scan(staged), path)

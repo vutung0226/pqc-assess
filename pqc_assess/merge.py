@@ -10,8 +10,9 @@ recorded and the other did not, such as CBOMkit's key size, are kept.
 from dataclasses import dataclass, field
 from typing import Optional
 
+from . import location
 from .cbom import Finding, component, new_document
-from .classify import BROKEN, REVIEW, RISK_ORDER, classify, is_library_entry
+from .classify import BROKEN, REVIEW, RISK_ORDER, classify, is_library_entry, is_noise
 
 # A generic EC finding adds nothing on a line where a scanner named the scheme.
 _EC_SCHEMES = {"ECDSA", "ECDH", "EdDSA", "X25519"}
@@ -29,6 +30,7 @@ class Merged:
     mode: Optional[str] = None
     curve: Optional[str] = None
     version: Optional[str] = None
+    where: str = location.CODE  # code, test or text: see location.kind
     tools: set = field(default_factory=set)
     names: list = field(default_factory=list)
     contexts: list = field(default_factory=list)
@@ -56,6 +58,8 @@ def merge(findings: list):
     by_key = {}
     libraries = {}
     for f in findings:
+        if is_noise(f.name):
+            continue
         if f.asset_type == "library" or is_library_entry(f.name):
             lib = libraries.setdefault(f.name, Library(f.name))
             if f.file:
@@ -63,12 +67,18 @@ def merge(findings: list):
             lib.tools.add(f.tool)
             continue
         if f.asset_type == "issue":
-            key = (f.file, f.line, "issue:" + f.name)
-            if key not in by_key:
-                risk = BROKEN if f.severity in ("CRITICAL", "HIGH") else REVIEW
-                by_key[key] = Merged(f.name, risk, f.remediation or "Review by hand.", "issue", f.file, f.line)
-            by_key[key].tools.add(f.tool)
-            continue
+            # An issue a family covers, such as a private key, merges with the
+            # same finding from the CBOM; any other keeps its own name.
+            c = classify(f.name)
+            if c.family != "Other":
+                f.asset_type = "algorithm"
+            else:
+                key = (f.file, f.line, "issue:" + f.name)
+                if key not in by_key:
+                    risk = BROKEN if f.severity in ("CRITICAL", "HIGH") else REVIEW
+                    by_key[key] = Merged(f.name, risk, f.remediation or "Review by hand.", "issue", f.file, f.line)
+                by_key[key].tools.add(f.tool)
+                continue
         c = classify(f.name, f.key_size, f.mode, f.version)
         # The context can say what the name does not, as CryptoScan's "AES"
         # matched on the text aes-128-cbc.
@@ -83,7 +93,8 @@ def merge(findings: list):
         m.tools.add(f.tool)
         if f.name not in m.names:
             m.names.append(f.name)
-        if f.context and f.context not in m.contexts:
+        # The context of key material is the key; the report must not copy it.
+        if f.context and f.context not in m.contexts and c.primitive != "secret":
             m.contexts.append(f.context)
         m.key_size = m.key_size or c.key_size
         m.mode = m.mode or c.mode
@@ -120,6 +131,8 @@ def merge(findings: list):
         scheme.tools |= m.tools
         scheme.curve = scheme.curve or m.curve
         scheme.names += [n for n in m.names if n not in scheme.names]
+    for m in merged:
+        m.where = location.kind(m.file)
     merged.sort(key=lambda m: (_rank(m.risk), m.family, m.file or "", m.line or 0))
     return merged, sorted(libraries.values(), key=lambda lib: lib.name.lower())
 
@@ -148,6 +161,8 @@ def to_cbom(merged: list, libraries: list) -> dict:
                          key_size=size, mode=mode,
                          properties=[
                              {"name": "pqc-assess:risk", "value": first.risk},
+                             {"name": "pqc-assess:location",
+                              "value": ",".join(sorted({m.where for m in items}))},
                              {"name": "pqc-assess:recommendation", "value": first.recommendation},
                              {"name": "pqc-assess:tools",
                               "value": ",".join(sorted(set().union(*(m.tools for m in items))))},

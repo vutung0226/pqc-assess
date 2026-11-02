@@ -37,6 +37,10 @@ class Family:
 # reaches ECDSA before it reaches the SHA-2 or RSA entries, and ML-DSA is
 # matched before DSA.
 FAMILIES = [
+    # A key in the code is a finding whatever its algorithm, and the header
+    # names RSA, so it goes first.
+    Family("Key material in code", re.compile(r"PRIVATE-KEY|KEY-MATERIAL|PRIVATE-KEY-HEADER"), BROKEN, "secret",
+           "Remove the key from the code and the repository history, and rotate it."),
     Family("Hybrid PQC", re.compile(r"X25519-?MLKEM|MLKEM-?X25519|SECP256R1-?MLKEM|X25519-?KYBER"),
            QUANTUM_SAFE, "kem", "No change needed."),
     Family("ML-KEM", re.compile(r"ML-?KEM|KYBER"), QUANTUM_SAFE, "kem", "No change needed."),
@@ -158,6 +162,26 @@ def classify(name: str, key_size: Optional[int] = None, mode: Optional[str] = No
         result.notes.append(f"{result.key_size}-bit keys are below the 2048-bit minimum (NIST SP 800-131A).")
 
     return result
+
+
+# CryptoScan certificate heuristics that match ordinary words rather than
+# cryptography: "Certificate Expiration Check" matches "expires", "Subject
+# Alternative Name" matches "ip:", "Certificate Signature Algorithm" matches a
+# JWT library's SignatureAlgorithm. On OWASP Juice Shop they were 299 of 354
+# findings, most in translation files. They name no algorithm, so an
+# inventory leaves them out.
+NOISE = {
+    "Certificate Expiration Check",
+    "Subject Alternative Name",
+    "Certificate Signature Algorithm",
+    "X.509 Certificate Parsing",
+    "Certificate Revocation Check",
+    "Certificate Chain",
+}
+
+
+def is_noise(name: str) -> bool:
+    return name in NOISE
 
 
 def is_library_entry(name: str) -> bool:

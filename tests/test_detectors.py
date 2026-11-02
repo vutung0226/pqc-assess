@@ -4,7 +4,7 @@ import tempfile
 import unittest
 import zipfile
 
-from pqc_assess.detectors import gobinary, jar, walk
+from pqc_assess.detectors import gobinary, jar, jose, walk
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
@@ -101,3 +101,28 @@ class WalkTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JoseTest(unittest.TestCase):
+    def test_signature_algorithm_identifiers(self):
+        files = {
+            "lib/insecurity.ts": "export const authorize = (user = {}) => jwt.sign(user, privateKey, { expiresIn: '6h', algorithm: 'RS256' })\n",
+            "Auth.java": "Jwts.builder().signWith(key, SignatureAlgorithm.ES384);\nAlgorithm a = Algorithm.RSA256(pub, priv);\n",
+            "Token.cs": "new SigningCredentials(key, SecurityAlgorithms.RsaSsaPssSha512);\n",
+            "jwks.json": '{"keys": [{"kty": "OKP", "alg": "EdDSA"}]}\n',
+            "hmac.js": "jwt.sign(p, secret, { algorithm: 'HS256' })\n",
+            "words.txt": "RS256 in a text file is not read\n",
+        }
+        with tempfile.TemporaryDirectory() as d:
+            for name, text in files.items():
+                os.makedirs(os.path.dirname(os.path.join(d, name)), exist_ok=True)
+                with open(os.path.join(d, name), "w") as f:
+                    f.write(text)
+            doc = jose.scan(d)
+        self.assertEqual([(n, loc, line) for n, _, loc, line in occurrences(doc)], [
+            ("ECDSA (JWT ES384)", "Auth.java", 1),
+            ("EdDSA (JWT EdDSA)", "jwks.json", 1),
+            ("RSA (JWT PS512)", "Token.cs", 1),
+            ("RSA (JWT RS256)", "lib/insecurity.ts", 1),
+            ("RSA (JWT RS256)", "Auth.java", 2),
+        ])
