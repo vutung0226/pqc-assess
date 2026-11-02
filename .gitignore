@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+# Scan output holds the customer's code.
+out/
+*-report/

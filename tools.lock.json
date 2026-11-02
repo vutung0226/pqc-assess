@@ -1,0 +1,18 @@
+{
+  "cryptoscan": {
+    "repo": "https://github.com/csnp/cryptoscan.git",
+    "commit": "61fe200ed0d158ab886cbfc4b3c7976fccbe13d9",
+    "patches": "patches/cryptoscan",
+    "dockerfile": "docker/cryptoscan.Dockerfile",
+    "image": "pqc-assess/cryptoscan:61fe200-p2"
+  },
+  "qryx": {
+    "module": "github.com/TAIPANBOX/qryx/cmd/qryx",
+    "version": "v1.1.1",
+    "dockerfile": "docker/qryx.Dockerfile",
+    "image": "pqc-assess/qryx:v1.1.1"
+  },
+  "cbomkit": {
+    "image": "ghcr.io/cbomkit/cbomkit-action@sha256:7dfc905c614549fdb630d41a33b34a039af7f60c982501c6d74dfc63ef700512"
+  }
+}

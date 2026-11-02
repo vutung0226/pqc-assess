@@ -1,0 +1,156 @@
+From 0d9cdeec890436058385be1022906ca07e5261e9 Mon Sep 17 00:00:00 2001
+From: Tung <vuchauduytung@gmail.com>
+Date: Mon, 2 Nov 2026 15:25:28 +0700
+Subject: [PATCH 2/2] fix: match 3DES, AES and EC as PyCryptodome, OpenSSL and
+ cipher-suite lists name them
+
+DES3.new, DES-CBC3-SHA, EVP_des_ede3_cbc, EVP_aes_256_gcm, EVP_PKEY_EC and
+the NID_ curve constants were not matched: the leading \b of the patterns
+does not stop at the underscore before the OpenSSL names. Also record the
+symlink fix in the changelog.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ CHANGELOG.md                 | 13 ++++++++++++
+ pkg/patterns/matcher.go      | 30 ++++++++++++++++----------
+ pkg/patterns/matcher_test.go | 41 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 73 insertions(+), 11 deletions(-)
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index df7fc11..4b05285 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -170,6 +170,19 @@ All notable changes to CryptoScan are recorded here. This project follows
+ 
+ ### Fixed
+ 
++- **A symbolic link no longer leads the scan to a file outside the scanned
++  folder.** The walk opened every file it reached, links included, so a
++  repository holding a link such as `innocent.py -> ~/.ssh/id_rsa` had the
++  key's lines copied into the report's `match` and `sourceContext`. Links are
++  now left unopened and listed under `skippedFiles` with their own reason, and
++  the text report says how to scan what a link points to.
++- **3DES, AES and elliptic-curve use is found as libraries and server
++  configuration name it.** `3DES-001` matches PyCryptodome's `DES3`, the
++  OpenSSL cipher-suite name `DES-CBC3` (as in `DES-CBC3-SHA`) and
++  `EVP_des_ede3*`; `AES-001` and `AES-ECB` match the OpenSSL constructors
++  `EVP_aes_<bits>_<mode>`; and `ECC-001` matches `EVP_PKEY_EC`,
++  `EC_KEY_new_by_curve_name` and the `NID_` curve constants. The leading `\b`
++  of the earlier patterns did not stop at the underscore before these names.
+ - **A Git URL scan gives paths inside the repository.** `cryptoscan scan`
+   with a repository URL clones it into a temporary directory and removes the
+   directory when the scan ends, and every path in the report pointed into
+diff --git a/pkg/patterns/matcher.go b/pkg/patterns/matcher.go
+index aa75873..07e288d 100644
+--- a/pkg/patterns/matcher.go
++++ b/pkg/patterns/matcher.go
+@@ -452,10 +452,13 @@ func (m *Matcher) loadPatterns() {
+ 
+ 	// ECDSA/ECC Detection
+ 	m.patterns = append(m.patterns, Pattern{
+-		ID:          "ECC-001",
+-		Name:        "Elliptic Curve Cryptography",
+-		Category:    "Asymmetric Encryption",
+-		Regex:       regexp.MustCompile(`(?i)\b(ECDSA|ECDH|ECC|secp256r1|secp384r1|secp521r1|P-256|P-384|P-521|prime256v1|nistp256|nistp384|nistp521|curve25519|ed25519)\b`),
++		ID:       "ECC-001",
++		Name:     "Elliptic Curve Cryptography",
++		Category: "Asymmetric Encryption",
++		// The OpenSSL names are written with underscores, which the \b of the
++		// first alternation does not stop at: EVP_PKEY_EC and the NID_ curve
++		// constants were invisible in C code.
++		Regex:       regexp.MustCompile(`(?i)\b(ECDSA|ECDH|ECC|secp256r1|secp384r1|secp521r1|P-256|P-384|P-521|prime256v1|nistp256|nistp384|nistp521|curve25519|ed25519)\b|\bEVP_PKEY_EC\b|\bEC_KEY_new_by_curve_name\b|\bNID_(X9_62_prime256v1|secp256k1|secp384r1|secp521r1)\b`),
+ 		Severity:    types.SeverityHigh,
+ 		Quantum:     types.QuantumVulnerable,
+ 		Algorithm:   "ECC",
+@@ -500,10 +503,12 @@ func (m *Matcher) loadPatterns() {
+ 
+ 	// AES Detection
+ 	m.patterns = append(m.patterns, Pattern{
+-		ID:          "AES-001",
+-		Name:        "AES Algorithm",
+-		Category:    "Symmetric Encryption",
+-		Regex:       regexp.MustCompile(`(?i)\bAES[-_]?(128|192|256)?([-_]?(CBC|GCM|CTR|ECB|CFB|OFB))?\b`),
++		ID:       "AES-001",
++		Name:     "AES Algorithm",
++		Category: "Symmetric Encryption",
++		// EVP_aes_256_gcm and the other OpenSSL EVP cipher constructors put
++		// an underscore before "aes", which the leading \b does not stop at.
++		Regex:       regexp.MustCompile(`(?i)\bAES[-_]?(128|192|256)?([-_]?(CBC|GCM|CTR|ECB|CFB|OFB))?\b|\bEVP_aes_(128|192|256)_[a-z0-9]+\b`),
+ 		Severity:    types.SeverityInfo,
+ 		Quantum:     types.QuantumPartial,
+ 		Algorithm:   "AES",
+@@ -517,7 +522,7 @@ func (m *Matcher) loadPatterns() {
+ 		ID:          "AES-ECB",
+ 		Name:        "AES-ECB Mode",
+ 		Category:    "Insecure Mode",
+-		Regex:       regexp.MustCompile(`(?i)\bAES[-_/]?ECB\b|ECB[-_]?mode|Mode\s*[=:]\s*['"]?ECB`),
++		Regex:       regexp.MustCompile(`(?i)\bAES[-_/]?ECB\b|ECB[-_]?mode|Mode\s*[=:]\s*['"]?ECB|\bEVP_aes_(128|192|256)_ecb\b`),
+ 		Severity:    types.SeverityCritical,
+ 		Quantum:     types.QuantumPartial,
+ 		Algorithm:   "AES-ECB",
+@@ -550,8 +555,11 @@ func (m *Matcher) loadPatterns() {
+ 		Name:     "Triple DES Algorithm",
+ 		Category: "Deprecated Algorithm",
+ 		// des.NewTripleDESCipher is the Go standard library constructor; the
+-		// \b(3DES|...)\b alternation cannot reach it.
+-		Regex:       regexp.MustCompile(`(?i)\b(3DES|Triple[-_]?DES|DESede|TDEA)\b|\bdes\.NewTripleDESCipher\s*\(`),
++		// \b(3DES|...)\b alternation cannot reach it. DES3 is the PyCryptodome
++		// module (DES3.new), DES-CBC3 the OpenSSL cipher-suite name in server
++		// configuration (DES-CBC3-SHA), and EVP_des_ede3 the OpenSSL
++		// constructor.
++		Regex:       regexp.MustCompile(`(?i)\b(3DES|Triple[-_]?DES|DESede|TDEA|DES3|DES-CBC3)\b|\bdes\.NewTripleDESCipher\s*\(|\bEVP_des_ede3(_[a-z0-9]+)?\b`),
+ 		Severity:    types.SeverityHigh,
+ 		Quantum:     types.QuantumVulnerable,
+ 		Algorithm:   "3DES",
+diff --git a/pkg/patterns/matcher_test.go b/pkg/patterns/matcher_test.go
+index 6e7bdbf..f4c967c 100644
+--- a/pkg/patterns/matcher_test.go
++++ b/pkg/patterns/matcher_test.go
+@@ -728,3 +728,44 @@ func TestEffortNeverSaysAssessmentNeeded(t *testing.T) {
+ 		}
+ 	}
+ }
++
++// Each line is the way a library or a server configuration names the
++// algorithm, which the patterns once missed: OpenSSL writes its names with
++// underscores the leading \b of a pattern does not stop at, PyCryptodome calls
++// its module DES3, and an OpenSSL cipher-suite list writes DES-CBC3.
++func TestMatchLibraryAndConfigNames(t *testing.T) {
++	m := NewMatcher()
++	tests := []struct {
++		name    string
++		file    string
++		content string
++		wantID  string
++	}{
++		{"PyCryptodome DES3", "keys.py", "cipher = DES3.new(key, DES3.MODE_CBC)", "3DES-001"},
++		{"OpenSSL cipher suite", "nginx.conf", "ssl_ciphers RC4-SHA:DES-CBC3-SHA;", "3DES-001"},
++		{"OpenSSL EVP 3DES", "enc.c", "EVP_EncryptInit_ex(ctx, EVP_des_ede3_cbc(), NULL, key, iv);", "3DES-001"},
++		{"OpenSSL EVP AES-GCM", "enc.c", "EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, iv);", "AES-001"},
++		{"OpenSSL EVP AES-ECB", "enc.c", "EVP_EncryptInit_ex(ctx, EVP_aes_128_ecb(), NULL, key, NULL);", "AES-ECB"},
++		{"OpenSSL EC key type", "enc.c", "EVP_PKEY_CTX *p = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);", "ECC-001"},
++		{"OpenSSL EC curve", "enc.c", "EC_KEY *k = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);", "ECC-001"},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			var ids []string
++			for _, match := range m.Match(tt.content, tt.file, 1) {
++				ids = append(ids, match.ID)
++			}
++			found := false
++			for _, id := range ids {
++				if strings.HasPrefix(id, tt.wantID) {
++					found = true
++					break
++				}
++			}
++			if !found {
++				t.Errorf("Match(%q) IDs = %v, want one starting with %s", tt.content, ids, tt.wantID)
++			}
++		})
++	}
++}
+-- 
+2.34.1
+
