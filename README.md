@@ -33,7 +33,7 @@ python3 -m pqc_assess scan /path/to/customer -o out # scan, merge, report
 - `findings.json`: the merged findings as a list
 - `raw/`: each scanner's own output and log. **This holds lines of the customer's code**, keys in it included; treat it as the customer's data.
 
-`--tools cryptoscan,cbomkit,qryx,jar,gobin` runs a subset. `merge -o out A.cbom.json B.cbom.json` merges CBOMs made elsewhere; each file's tool is its name before the first dot.
+`--tools cryptoscan,cbomkit,qryx,jar,gobin,jose` runs a subset. `merge -o out A.cbom.json B.cbom.json` merges CBOMs made elsewhere; each file's tool is its name before the first dot.
 
 ## Isolation
 
