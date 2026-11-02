@@ -66,6 +66,16 @@ Sếp cần một công cụ để **demo**. Công cụ tìm xem phần mềm c�
 - Fork `csnp/cryptoscan` sang `vutung0226/cryptoscan`, push nhánh `fix/skip-symlinks` (2 commit).
 - Tạo repo công khai `vutung0226/pqc-assess` và push. Push qua HTTPS bằng thông tin đăng nhập của `gh` (tài khoản vutung0226); SSH key của máy thuộc tài khoản khác (Vuchauduytung).
 
+### 7. Deploy lên Raspberry Pi (mikerpi5.lan)
+- Pi 5: aarch64, Debian 12, Docker 29, Python 3.11. Ổ thẻ nhớ ban đầu chỉ còn 825 MB.
+- Dọn dung lượng: `docker builder prune` không giải phóng được gì (cache dùng chung layer với image). Đã chạy `sudo apt-get clean` (1,3 GB file `.deb`) và `pip cache purge` (223 MB), lên được 2,2 GB trống. Không xóa image hay container nào; các container Home Assistant, Grafana, InfluxDB đã dừng vẫn giữ nguyên.
+- `scripts/deploy.sh mikerpi5.lan`: biên dịch chéo CryptoScan và qryx sang arm64 trên máy dev, chép repo và binary lên `~/pqc-assess`, đóng image distroless trên Pi, kéo CBOMkit bản arm64 (cùng digest đã ghim), rồi chạy test và tự kiểm tra.
+- Kiểm chứng: quét bộ mẫu trên Pi (`~/pqc-assess-demo/`) cho ra 41/41 phát hiện, giống hệt kết quả trên máy dev. Mất 9 giây. Sau khi deploy Pi còn 1,6 GB trống.
+- Chạy trên Pi: `ssh mikerpi5.lan 'cd ~/pqc-assess && python3 -m pqc_assess scan <thư-mục> -o <kết-quả>'`.
+
+### 8. Pull request lên csnp/cryptoscan
+- Nội dung PR đã soạn: mô tả lỗi symlink, cách tái hiện, thay đổi và test. Hệ thống phân quyền của Claude Code chặn việc tự mở PR (tạo nội dung công khai), nên **anh cần tự chạy lệnh mở PR**.
+
 ## Vị trí các file
 
 Thư mục gốc: `~/Tung/projects/security/`
@@ -100,5 +110,5 @@ python3 -m unittest discover -s tests -t .        # chạy test
 2. ~~Tách HMAC-SHA1; gộp "Key material" và "RSA" cùng dòng; hạ mức các chuỗi khớp trong tên file, URL, chuỗi SQL~~ (đã xong).
 3. **Build Java trước khi quét** (Maven/Gradle trong container) để CBOMkit chính xác hơn.
 4. **Bảng tổng quan HTML một trang** cho buổi trình bày.
-5. **Gửi bản sửa lên CryptoScan:** ngày 2026-11-02 đã quyết định đưa bản sửa symlink lên fork công khai và đưa repo này công khai. Từ lúc đó lỗ hổng coi như đã công khai, nên cần **báo ngay cho CSNP** (`disclosure/cryptoscan-symlink-report.md`), rồi mở PR từ fork cho cả hai commit.
+5. **Gửi bản sửa lên CryptoScan** (đã chọn cách mở PR; chờ anh chạy lệnh `gh pr create`): ngày 2026-11-02 đã quyết định đưa bản sửa symlink lên fork công khai và đưa repo này công khai. Từ lúc đó lỗ hổng coi như đã công khai, nên cần **báo ngay cho CSNP** (`disclosure/cryptoscan-symlink-report.md`), rồi mở PR từ fork cho cả hai commit.
 6. **Thử trên một codebase lớn** để đo thời gian và mức nhiễu.
