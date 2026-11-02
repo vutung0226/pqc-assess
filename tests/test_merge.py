@@ -123,3 +123,67 @@ class ReadTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SourceRefinementTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        files = {
+            "lib/utils.ts": "x\nreturn crypto.createHmac('sha1', key).update(text).digest('hex')\n",
+            "lib/hash.ts": "return crypto.createHash('sha1').update(text).digest('hex')\n",
+            "scripts/package.mjs": "if (file.endsWith('.md5')) continue\nconst h = crypto.createHash('md5')\n",
+            "routes/verify.ts": "{ [Op.like]: '%md5%' },\n",
+            "lib/keys.ts": "const privateKey = '-----BEGIN RSA PRIVATE KEY-----...'\n",
+        }
+        for name, text in files.items():
+            path = os.path.join(self.dir.name, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(text)
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def merged(self, findings):
+        from pqc_assess.source import Source
+        out, _ = merge.merge(findings, Source(self.dir.name))
+        return {(m.file, m.line): m for m in out}
+
+    def test_hmac_sha1_is_not_broken_sha1(self):
+        got = self.merged([F("cryptoscan", "SHA-1", file="lib/utils.ts", line=2),
+                           F("cryptoscan", "SHA-1", file="lib/hash.ts", line=1)])
+        self.assertEqual((got[("lib/utils.ts", 2)].family, got[("lib/utils.ts", 2)].risk), ("HMAC-SHA1", QUANTUM_SAFE))
+        self.assertEqual((got[("lib/hash.ts", 1)].family, got[("lib/hash.ts", 1)].risk), ("SHA-1", BROKEN))
+
+    def test_extension_and_like_pattern_are_mentions(self):
+        got = self.merged([F("cryptoscan", "MD5", file="scripts/package.mjs", line=1),
+                           F("cryptoscan", "MD5", file="scripts/package.mjs", line=2),
+                           F("cryptoscan", "MD5", file="routes/verify.ts", line=1)])
+        self.assertEqual(got[("scripts/package.mjs", 1)].where, "mention")
+        self.assertEqual(got[("scripts/package.mjs", 2)].where, "code")
+        self.assertEqual(got[("routes/verify.ts", 1)].where, "mention")
+
+    def test_semantic_tool_findings_stay_in_code(self):
+        got = self.merged([F("cbomkit", "MD5", file="scripts/package.mjs", line=1)])
+        self.assertEqual(got[("scripts/package.mjs", 1)].where, "code")
+
+    def test_rsa_on_a_key_line_folds_into_the_key(self):
+        got = self.merged([F("cryptoscan", "Private Key Header", file="lib/keys.ts", line=1),
+                           F("cryptoscan", "RSA", file="lib/keys.ts", line=1)])
+        self.assertEqual(len(got), 1)
+        key = got[("lib/keys.ts", 1)]
+        self.assertEqual((key.family, key.risk), ("Key material in code", BROKEN))
+        self.assertTrue(any(n.startswith("The key is RSA") for n in key.notes))
+
+    def test_no_source_changes_nothing(self):
+        out, _ = merge.merge([F("cryptoscan", "SHA-1", file="lib/utils.ts", line=2)])
+        self.assertEqual(out[0].family, "SHA-1")
+
+    def test_links_in_the_tree_are_not_read(self):
+        from pqc_assess.source import Source
+        with tempfile.TemporaryDirectory() as outside:
+            with open(os.path.join(outside, "secret.ts"), "w") as f:
+                f.write("createHmac('sha1')\n")
+            os.symlink(os.path.join(outside, "secret.ts"), os.path.join(self.dir.name, "link.ts"))
+            self.assertIsNone(Source(self.dir.name).line("link.ts", 1))
+            self.assertIsNone(Source(self.dir.name).line("../" + os.path.basename(outside) + "/secret.ts", 1))

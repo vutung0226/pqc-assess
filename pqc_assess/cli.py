@@ -13,14 +13,15 @@ import sys
 
 from . import cbom, merge, report, runner
 from .detectors import gobinary, jar, jose
+from .source import Source
 
 DOCKER_TOOLS = ("cryptoscan", "cbomkit", "qryx")
 LOCAL_TOOLS = ("jar", "gobin", "jose")
 
 
-def _write_outputs(out: str, target: str, inputs: list, status: dict) -> dict:
+def _write_outputs(out: str, target: str, inputs: list, status: dict, root: str = None) -> dict:
     findings = merge.load_all(inputs)
-    merged, libraries = merge.merge(findings)
+    merged, libraries = merge.merge(findings, Source(root))
     coverage = merge.tool_coverage(merged)
     cbom.write(merge.to_cbom(merged, libraries), os.path.join(out, "cbom.json"))
     with open(os.path.join(out, "findings.json"), "w", encoding="utf-8") as f:
@@ -67,7 +68,7 @@ def cmd_scan(args) -> int:
         print(f"  {r.tool:16} {r.status}")
     # The folder's name only: a report handed to the customer must not carry
     # paths of the machine that ran the scan.
-    counts = _write_outputs(out, os.path.basename(target), inputs, status)
+    counts = _write_outputs(out, os.path.basename(target), inputs, status, root=target)
     print(f"\n{counts['findings']} findings, {counts['libraries']} libraries")
     print(f"Report: {os.path.join(out, 'report.md')}")
     return 0 if all(r.status == "ok" for r in results) else 1
@@ -77,7 +78,8 @@ def cmd_merge(args) -> int:
     out = os.path.abspath(args.output)
     os.makedirs(out, exist_ok=True)
     inputs = [(os.path.basename(p).split(".")[0], p) for p in args.cboms]
-    counts = _write_outputs(out, args.target or "(merged CBOMs)", inputs, {t: "ok" for t, _ in inputs})
+    counts = _write_outputs(out, args.target or "(merged CBOMs)", inputs, {t: "ok" for t, _ in inputs},
+                            root=args.source)
     print(f"{counts['findings']} findings, {counts['libraries']} libraries; report: {os.path.join(out, 'report.md')}")
     return 0
 
@@ -100,6 +102,7 @@ def main(argv=None) -> int:
     m.add_argument("cboms", nargs="+")
     m.add_argument("-o", "--output", required=True)
     m.add_argument("--target", help="name to print in the report")
+    m.add_argument("--source", help="the scanned folder, to check what pattern matches matched")
     m.set_defaults(func=cmd_merge)
 
     b = sub.add_parser("build", help="build CryptoScan and qryx images from tools.lock.json and pull CBOMkit")

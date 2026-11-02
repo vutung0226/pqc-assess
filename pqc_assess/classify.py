@@ -69,6 +69,11 @@ FAMILIES = [
     Family("RC2", re.compile(r"\bRC2\b"), BROKEN, "block-cipher", "Replace with AES-256-GCM now."),
     Family("Blowfish", re.compile(r"BLOWFISH|\bBF-"), BROKEN, "block-cipher", "Replace with AES-256-GCM now."),
     Family("MD5", re.compile(r"\bMD[245]\b|^MD5|MD5"), BROKEN, "hash", "Replace with SHA-256 or SHA-3 now."),
+    # HMAC does not rely on collision resistance, so SHA-1's collisions do not
+    # break it, and NIST SP 800-131A still accepts HMAC-SHA-1. Checked before
+    # SHA-1, which is broken.
+    Family("HMAC-SHA1", re.compile(r"HMAC-?SHA-?1(?!\d)"), QUANTUM_SAFE, "mac",
+           "Acceptable today (NIST SP 800-131A); use HMAC-SHA-256 in new code."),
     Family("SHA-1", re.compile(r"SHA-?1(?!\d)"), BROKEN, "hash", "Replace with SHA-256 or SHA-3 now."),
     Family("SHA-3", re.compile(r"SHA-?3|SHAKE|KECCAK"), QUANTUM_SAFE, "hash", "No change needed."),
     Family("SHA-2", re.compile(r"SHA-?(224|256|384|512)|SHA-?2\b"), QUANTUM_SAFE, "hash",

@@ -7,11 +7,13 @@ server.go:4 become one ECDSA finding that both tools saw. Details one tool
 recorded and the other did not, such as CBOMkit's key size, are kept.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
 from . import location
 from .cbom import Finding, component, new_document
+from .source import Source
 from .classify import BROKEN, REVIEW, RISK_ORDER, classify, is_library_entry, is_noise
 
 # A generic EC finding adds nothing on a line where a scanner named the scheme.
@@ -53,7 +55,7 @@ def _rank(risk: str) -> int:
     return RISK_ORDER.index(risk)
 
 
-def merge(findings: list):
+def merge(findings: list, source: Optional[Source] = None):
     """Return (merged findings sorted most urgent first, libraries)."""
     by_key = {}
     libraries = {}
@@ -131,10 +133,70 @@ def merge(findings: list):
         scheme.tools |= m.tools
         scheme.curve = scheme.curve or m.curve
         scheme.names += [n for n in m.names if n not in scheme.names]
+
+    merged = _fold_into_key_material(merged)
+    src = source or Source(None)
     for m in merged:
         m.where = location.kind(m.file)
+        line = src.line(m.file, m.line)
+        if line is None:
+            continue
+        if m.family == "SHA-1" and _HMAC.search(line):
+            c = classify("HMAC-SHA1")
+            m.family, m.risk, m.recommendation, m.primitive = c.family, c.risk, c.recommendation, c.primitive
+        if m.where == location.CODE and m.tools <= _PATTERN_TOOLS and _only_mentioned(m.family, line):
+            m.where = location.MENTION
     merged.sort(key=lambda m: (_rank(m.risk), m.family, m.file or "", m.line or 0))
     return merged, sorted(libraries.values(), key=lambda lib: lib.name.lower())
+
+
+# A key in the code is one finding, not also an RSA finding on the same line:
+# the key's algorithm goes into the note, with what to replace it with.
+_KEY_ALGORITHMS = {"RSA", "EC", "ECDSA", "ECDH", "DSA", "EdDSA", "X25519", "DH"}
+
+
+def _fold_into_key_material(merged: list) -> list:
+    keys_at = {(m.file, m.line): m for m in merged if m.family == "Key material in code" and m.line}
+    out = []
+    for m in merged:
+        key = keys_at.get((m.file, m.line)) if m.family in _KEY_ALGORITHMS else None
+        if key is None:
+            out.append(m)
+            continue
+        key.tools |= m.tools
+        key.names += [n for n in m.names if n not in key.names]
+        note = f"The key is {m.family}: when rotating it, replace it per this recommendation: {m.recommendation}"
+        if note not in key.notes:
+            key.notes.append(note)
+    return out
+
+
+_HMAC = re.compile(r"hmac", re.I)
+# Scanners that match text rather than code structure: only their findings can
+# be a word that merely appears on the line.
+_PATTERN_TOOLS = {"cryptoscan"}
+_ALG_WORD = {
+    "MD5": r"md5", "SHA-1": r"sha-?1(?!\d)", "RSA": r"rsa", "DSA": r"(?<![a-z])dsa", "ECDSA": r"ecdsa",
+    "EC": r"ecdsa|ecdh|ecc|secp\d|prime256|p-?(256|384|521)", "3DES": r"3des|des3|desede|des-cbc3|triple",
+    "DES": r"(?<![a-z])des(?![a-z])", "RC4": r"rc4|arcfour", "AES": r"aes",
+}
+_NOT_A_USE = [
+    re.compile(r"https?://\S+", re.I),  # a URL
+    re.compile(r"\.(md5|sha1|sha256|sha512)\b", re.I),  # a file extension: file.md5
+    re.compile(r"%[^%\s]*%"),  # a SQL LIKE pattern: '%md5%'
+]
+
+
+def _only_mentioned(family: str, line: str) -> bool:
+    """True when the algorithm's name on this line appears only in a URL, a
+    file extension or a LIKE pattern."""
+    word = _ALG_WORD.get(family)
+    if not word or not re.search(word, line, re.I):
+        return False
+    rest = line
+    for pattern in _NOT_A_USE:
+        rest = pattern.sub(" ", rest)
+    return not re.search(word, rest, re.I)
 
 
 def to_cbom(merged: list, libraries: list) -> dict:

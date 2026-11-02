@@ -72,8 +72,9 @@ def render(target: str, merged: list, libraries: list, coverage: dict, tools_run
             f"{len(code)} uses of cryptography found in application code and configuration, in "
             f"{len({m.file for m in code if m.file})} files.", ""]
     if other:
-        out += [f"A further {len(other)} matches are in tests, documentation, translations or data files. "
-                "They are listed apart at the end: an algorithm named there is usually mentioned, not used.", ""]
+        out += [f"A further {len(other)} matches are in tests, documentation, translations or data files, "
+                "or name an algorithm only in a file extension, a URL or a query string. They are listed apart "
+                "at the end: an algorithm named there is usually mentioned, not used.", ""]
     out += ["| Risk | Findings in code |", "|---|---|"]
     for risk in RISK_ORDER:
         out.append(f"| {RISK_TEXT[risk]} | {counts.get(risk, 0)} |")
@@ -126,8 +127,9 @@ def render(target: str, merged: list, libraries: list, coverage: dict, tools_run
             ""]
 
     if other:
-        out += ["## In tests, documentation and data", "",
-                "Matches in files that are not application code. Most name an algorithm without using it; "
-                "a test can still show how the code uses one.", ""]
+        out += ["## In tests, documentation, data, and mentions", "",
+                "Matches in files that are not application code (`test`, `text`), and lines of code that name "
+                "an algorithm only in a file extension, a URL or a query string (`mention`). Most name an "
+                "algorithm without using it; a test can still show how the code uses one.", ""]
         _findings_table(out, other, with_where=True)
     return "\n".join(out)

@@ -11,8 +11,10 @@ Sếp cần một công cụ để **demo**. Công cụ tìm xem phần mềm c�
 - Không có tool mã nguồn mở nào đủ dùng một mình. Hướng đi là **ghép 3 tool** (CBOMkit, CryptoScan, qryx) và bổ sung các bộ quét tự viết, tất cả trong repo này (`pqc-assess`).
 - **Bộ mẫu tự sinh** (26 điểm crypto biết trước, 6 ngôn ngữ + nginx): tìm được **25/26**. Từng tool riêng lẻ chỉ được 16, 13 và 10. Ngoài ra còn tìm được crypto bên trong `.jar` và binary Go đã xóa symbol, không cần source.
 - **App thật:**
-  - **OWASP WebGoat** (Java): 147 phát hiện, 111 trong code và 36 trong test/tài liệu. Gần như tất cả đều đúng.
-  - **OWASP Juice Shop** (TypeScript): 51 phát hiện, 28 trong code và 23 trong test/tài liệu. Ở phần code, trong 24 phát hiện cần xử lý có khoảng 19 là đúng.
+  - **OWASP WebGoat** (Java): 147 phát hiện, 111 trong code và 36 trong test/tài liệu.
+  - **OWASP Juice Shop** (TypeScript): 48 phát hiện, 21 trong code. Ở phần code có 15 hàng cần xử lý, chỉ 1 báo động giả (lần đầu chạy: 354 phát hiện, phần lớn là nhiễu).
+  - WebGoat ở phần code có 22 hàng cần xử lý, 3 báo động giả.
+- Repo công khai: https://github.com/vutung0226/pqc-assess và fork https://github.com/vutung0226/cryptoscan (nhánh `fix/skip-symlinks`).
 - Tìm ra và sửa **một lỗ hổng bảo mật trong CryptoScan**: đi theo symlink nên làm lộ file trên máy quét, ví dụ khóa SSH. Báo cáo gửi riêng cho nhóm phát triển đã soạn xong nhưng **chưa gửi**.
 
 ## Các việc đã làm
@@ -48,11 +50,21 @@ Sếp cần một công cụ để **demo**. Công cụ tìm xem phần mềm c�
 - 27 unit test, chỉ dùng thư viện chuẩn của Python 3.10.
 
 ### 4. Gói demo
-- `demo-package.zip` gồm bộ mẫu, kết quả gốc của công cụ, symlink bẫy và `report.md` (tiếng Anh) có link tới từng file.
+- `demo-package.zip` gồm bộ mẫu, kết quả gốc của công cụ, symlink bẫy, kết quả WebGoat và Juice Shop (`real-apps/`), và `report.md` (tiếng Anh) có link tới từng file.
 
 ### 5. Thử trên app thật
 - WebGoat (commit `be2c186`) và Juice Shop (commit `717f5ef`), mỗi app quét khoảng 30 giây.
 - Kết quả nằm trong `real-apps-results/` (báo cáo, CBOM, findings).
+- Sau đó đã cải tiến thêm:
+  - HMAC-SHA1 tách khỏi SHA-1, xếp là chấp nhận được.
+  - Dòng chứa khóa RSA chỉ còn một phát hiện "Key material", kèm ghi chú thuật toán.
+  - Phát hiện chỉ do CryptoScan bắt được mà tên thuật toán chỉ nằm trong phần mở rộng file, URL hoặc chuỗi SQL thì xếp thành "mention".
+  - Các bước này đọc dòng nguồn qua `source.py`: không đi theo symlink, không đọc ra ngoài thư mục quét.
+- 33 unit test.
+
+### 6. GitHub
+- Fork `csnp/cryptoscan` sang `vutung0226/cryptoscan`, push nhánh `fix/skip-symlinks` (2 commit).
+- Tạo repo công khai `vutung0226/pqc-assess` và push. Push qua HTTPS bằng thông tin đăng nhập của `gh` (tài khoản vutung0226); SSH key của máy thuộc tài khoản khác (Vuchauduytung).
 
 ## Vị trí các file
 
@@ -77,17 +89,15 @@ python3 -m unittest discover -s tests -t .        # chạy test
 
 ## Giới hạn đã biết
 
-- Luật tìm theo chữ của CryptoScan vẫn còn báo động giả trong code: chuỗi `'%md5%'`, phần mở rộng `.md5`, `code: RSA` (mã quốc gia Nam Phi).
-- `createHmac('sha1')` bị xếp vào "broken". Thực tế HMAC-SHA1 vẫn được NIST chấp nhận, nên cần tách khỏi SHA-1 dùng để băm.
-- Một khóa RSA hardcode hiện ra hai lần: "Key material in code" và "RSA". Hợp lý nhưng làm tăng số đếm.
+- Luật tìm theo chữ của CryptoScan vẫn còn vài báo động giả trong code: `code: RSA` (mã quốc gia Nam Phi), tên file `MD5.java` trong file cấu hình, checksum `<sha1>`.
 - CBOMkit quét Java chính xác nhất khi dự án đã được build; hiện đang chạy chế độ chỉ source.
 - Binary C/C++ và Rust đã xóa symbol chưa được phân tích. Ngoài phạm vi demo.
 - Thuật toán được chọn lúc chạy (từ file cấu hình, database) thì không quét tĩnh được.
 
 ## Bước tiếp theo đề xuất
 
-1. **Demo:** dùng kết quả WebGoat và Juice Shop. App thật, nổi tiếng, thuyết phục hơn bộ mẫu. Có thể đưa vào gói demo.
-2. **Giảm báo động giả còn lại:** tách HMAC-SHA1; hạ mức các phát hiện chỉ do CryptoScan bắt được khi chuỗi khớp nằm trong tên file hoặc chuỗi SQL; gộp "Key material" và "RSA" cùng một dòng.
+1. ~~Đưa kết quả WebGoat và Juice Shop vào gói demo~~ (đã xong).
+2. ~~Tách HMAC-SHA1; gộp "Key material" và "RSA" cùng dòng; hạ mức các chuỗi khớp trong tên file, URL, chuỗi SQL~~ (đã xong).
 3. **Build Java trước khi quét** (Maven/Gradle trong container) để CBOMkit chính xác hơn.
 4. **Bảng tổng quan HTML một trang** cho buổi trình bày.
 5. **Gửi bản sửa lên CryptoScan:** ngày 2026-11-02 đã quyết định đưa bản sửa symlink lên fork công khai và đưa repo này công khai. Từ lúc đó lỗ hổng coi như đã công khai, nên cần **báo ngay cho CSNP** (`disclosure/cryptoscan-symlink-report.md`), rồi mở PR từ fork cho cả hai commit.

@@ -15,6 +15,7 @@ recommended replacement.
 | [qryx](https://github.com/TAIPANBOX/qryx) | Go, Python, JS/TS, Rust source; native binaries that import a crypto library | AST and import tables |
 | `pqc_assess.detectors.jar` | compiled Java: `.jar`, `.war`, `.ear`, `.class` | bytecode: the constant passed to each JCA `getInstance`, key sizes, BouncyCastle classes |
 | `pqc_assess.detectors.gobinary` | Go binaries, stripped ones included | the runtime's function table and build info |
+| `pqc_assess.detectors.jose` | JWT and JOSE signing in any language: `'RS256'`, `SignatureAlgorithm.ES256`, `Algorithm.RSA256(...)` | identifiers and library enums; the upstream scanners miss these |
 
 ## Use
 
@@ -27,7 +28,7 @@ python3 -m pqc_assess scan /path/to/customer -o out # scan, merge, report
 
 `out/` then holds:
 
-- `report.md`: summary by risk, what to migrate, every finding with the tools that saw it
+- `report.md`: summary by risk, what to migrate, the findings in application code with the tools that saw them, and, apart, the matches in tests, docs, translations and data, and the lines that name an algorithm only in a file extension, URL or query string
 - `cbom.json`: the merged CBOM, each component carrying `pqc-assess:risk`, `pqc-assess:recommendation` and `pqc-assess:tools`
 - `findings.json`: the merged findings as a list
 - `raw/`: each scanner's own output and log. **This holds lines of the customer's code**, keys in it included; treat it as the customer's data.

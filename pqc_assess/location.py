@@ -11,6 +11,9 @@ mention rather than a use.
 import re
 
 CODE, TEST, TEXT = "code", "test", "text"
+# Set by the merge, not by path: a line of code that names the algorithm only
+# in a file extension, a URL or a query string.
+MENTION = "mention"
 
 _TEST = re.compile(
     r"(^|/)(tests?|spec|specs|__tests__|__mocks__|it|e2e|cypress|testdata|test-data|fixtures?)(/|$)"
