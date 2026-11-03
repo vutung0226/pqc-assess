@@ -76,6 +76,13 @@ Sếp cần một công cụ để **demo**. Công cụ tìm xem phần mềm c�
 ### 8. Pull request lên csnp/cryptoscan
 - Nội dung PR đã soạn: mô tả lỗi symlink, cách tái hiện, thay đổi và test. Hệ thống phân quyền của Claude Code chặn việc tự mở PR (tạo nội dung công khai), nên **anh cần tự chạy lệnh mở PR**.
 
+### 9. Chạy lại test và app thật trên Pi (2026-11-03)
+- 33 unit test đều đạt.
+- Clone WebGoat (`be2c186`) và Juice Shop (`717f5ef`) vào `~/pqc-assess-demo/real-apps/` trên Pi; bỏ `.git` để tiết kiệm chỗ.
+- Lần đầu ổ đầy: chạy `python3 -m pqc_assess build` trên Pi làm image CryptoScan/qryx bị build lại từ `golang:1.22` và lấp hết thẻ nhớ. **Trên Pi không chạy `build`**; dùng `scripts/deploy.sh` từ máy dev (README đã ghi).
+- Dọn dung lượng (anh đã đồng ý): build cache Docker, pip cache, và **xóa các container đã dừng cùng image của stack Home Assistant, Grafana, InfluxDB, Telegraf, EMQX** (khoảng 4 GB). Giữ lại volume dữ liệu và `~/data_center/emqx/`. Pi còn 9,4 GB trống.
+- Kết quả giống hệt lần trước: WebGoat 147 phát hiện (111 trong code), Juice Shop 48 (21 trong code). Mỗi app khoảng 50 giây. Kết quả nằm trong `~/pqc-assess-demo/real-apps/out-*/` trên Pi.
+
 ## Vị trí các file
 
 Thư mục gốc: `~/Tung/projects/security/`
@@ -96,6 +103,8 @@ python3 -m pqc_assess build                       # build/tải image các tool 
 python3 -m pqc_assess scan <thư-mục> -o <thư-mục-kết-quả>
 python3 -m unittest discover -s tests -t .        # chạy test
 ```
+
+Cách test đầy đủ (bộ mẫu, WebGoat, Juice Shop và số phát hiện mong đợi) và cách push/deploy: xem mục **Tests** và **Changes** trong `README.md`. Sửa code trong repo git trên máy dev, không sửa bản trên Pi.
 
 ## Giới hạn đã biết
 

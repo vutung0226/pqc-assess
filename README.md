@@ -35,6 +35,12 @@ python3 -m pqc_assess scan /path/to/customer -o out # scan, merge, report
 
 `--tools cryptoscan,cbomkit,qryx,jar,gobin,jose` runs a subset. `merge -o out A.cbom.json B.cbom.json` merges CBOMs made elsewhere; each file's tool is its name before the first dot.
 
+On a small machine such as a Raspberry Pi, install with `scripts/deploy.sh HOST`
+from the development machine instead of running `build` there. `build` compiles
+the scanners in the `golang` image, close to 1 GB with its build cache, and fills
+a small SD card. A scan itself needs a few hundred MB free for the staged copy
+of the target and CBOMkit's work.
+
 ## Isolation
 
 The target and the scanners are both untrusted. The target is copied without its
@@ -71,6 +77,44 @@ entry and run `build` again.
 
 ## Tests
 
+The unit tests need neither Docker nor the network:
+
 ```sh
 python3 -m unittest discover -s tests -t .
 ```
+
+The scanners are checked end to end on the fixtures, which hold crypto in six
+languages, nginx, a `.jar` and a stripped Go binary. Every tool must print `ok`:
+
+```sh
+python3 -m pqc_assess scan tests/fixtures -o /tmp/pqc-assess-selftest
+```
+
+Before a demo, scan the two real applications at the commits used so far and
+compare the counts. A change in the counts means a change in what pqc-assess
+reports; read the diff of `findings.json` before accepting it.
+
+```sh
+git clone https://github.com/WebGoat/WebGoat.git && git -C WebGoat checkout be2c186
+git clone https://github.com/juice-shop/juice-shop.git && git -C juice-shop checkout 717f5ef
+python3 -m pqc_assess scan WebGoat -o out-WebGoat       # 147 findings, 111 in code
+python3 -m pqc_assess scan juice-shop -o out-juice-shop # 48 findings, 21 in code
+```
+
+Each takes about a minute. Keep `out-*` out of the repository: `raw/` holds the
+applications' code.
+
+## Changes
+
+Change the code in a git clone on the development machine, never in a copy that
+`deploy.sh` installed: that copy is a `git archive` with no history. Then:
+
+```sh
+python3 -m unittest discover -s tests -t .
+git commit -am "..."
+git push origin main
+scripts/deploy.sh HOST            # update the machine that runs the demo
+```
+
+`deploy.sh` copies `HEAD`, so commit before deploying. It ends by running the
+unit tests and the fixture scan on HOST.
