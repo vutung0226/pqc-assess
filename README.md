@@ -83,12 +83,16 @@ The unit tests need neither Docker nor the network:
 python3 -m unittest discover -s tests -t .
 ```
 
-The scanners are checked end to end on the fixtures, which hold crypto in six
-languages, nginx, a `.jar` and a stripped Go binary. Every tool must print `ok`:
+The scanners are checked end to end on the fixtures, a Java source and its
+compiled `.jar`. Every tool must print `ok`, and the scan finds 11:
 
 ```sh
 python3 -m pqc_assess scan tests/fixtures -o /tmp/pqc-assess-selftest
 ```
+
+A tool that fails names its log in `OUT/raw/` and, for the Docker errors that
+stop every scanner (a user outside the `docker` group, an image not built yet),
+what to do.
 
 Before a demo, scan the two real applications at the commits used so far and
 compare the counts. A change in the counts means a change in what pqc-assess

@@ -66,6 +66,8 @@ def cmd_scan(args) -> int:
             if path:
                 inputs.append((r.tool, path))
         print(f"  {r.tool:16} {r.status}")
+    if any(r.status != "ok" for r in results):
+        print(f"  logs: {raw}")
     # The folder's name only: a report handed to the customer must not carry
     # paths of the machine that ran the scan.
     counts = _write_outputs(out, os.path.basename(target), inputs, status, root=target)

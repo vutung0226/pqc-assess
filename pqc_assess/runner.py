@@ -50,12 +50,29 @@ def _run(cmd: list, log: str, stdout_path: Optional[str] = None) -> int:
                 out.close()
 
 
-def _ok(tool: str, path: str, code: int, ok_codes=(0,)) -> Result:
+# Docker's own errors, which stop every scanner the same way, and what to do.
+HINTS = (
+    ("permission denied while trying to connect to the docker",
+     "this user cannot use Docker: sudo usermod -aG docker $USER, then log in again"),
+    ("unable to find image", "image missing: run python3 -m pqc_assess build"),
+)
+
+
+def _hint(log: str) -> str:
+    try:
+        with open(log, encoding="utf-8", errors="replace") as f:
+            text = f.read(4096).lower()
+    except OSError:
+        return ""
+    return next((f"; {fix}" for needle, fix in HINTS if needle in text), "")
+
+
+def _ok(tool: str, path: str, code: int, log: str, ok_codes=(0,)) -> Result:
     if code == -1:
         return Result(tool, None, f"timed out after {TIMEOUT}s")
     if os.path.exists(path) and os.path.getsize(path) > 0 and code in ok_codes:
         return Result(tool, path, "ok")
-    return Result(tool, None, f"failed (exit {code}, see raw/{tool}.log)")
+    return Result(tool, None, f"failed (exit {code}, see raw/{os.path.basename(log)}{_hint(log)})")
 
 
 def run_cryptoscan(target: str, raw: str) -> Result:
@@ -69,9 +86,10 @@ def run_cryptoscan(target: str, raw: str) -> Result:
         cmd = sandbox() + ["-v", f"{target}:/scan:ro", "-v", f"{raw}:/out", image,
                            "scan", "/scan", "--format", fmt, "--output", f"/out/{name}",
                            "--no-config", "--include-quantum-safe", "--no-color"]
-        code = _run(cmd, os.path.join(raw, f"cryptoscan-{fmt}.log"))
+        log = os.path.join(raw, f"cryptoscan-{fmt}.log")
+        code = _run(cmd, log)
         # Exit 1 means a CRITICAL finding, which is what a scan of weak crypto finds.
-        results[fmt] = _ok("cryptoscan", os.path.join(raw, name), code, ok_codes=(0, 1))
+        results[fmt] = _ok("cryptoscan", os.path.join(raw, name), code, log, ok_codes=(0, 1))
     result = results["cbom"]
     result.extra = results["json"].cbom
     return result
@@ -86,12 +104,13 @@ def run_cbomkit(target: str, raw: str) -> Result:
                        "-e", "GITHUB_WORKSPACE=/github/workspace", "-e", "GITHUB_OUTPUT=/out/gh_output",
                        "-e", "CBOMKIT_OUTPUT_DIR=/out", "-e", "CBOMKIT_JAVA_REQUIRE_BUILD=false",
                        "-e", "CBOMKIT_EXCLUDE=", "-e", "CBOMKIT_GENERATE_MODULE_CBOMS=false", image]
-    code = _run(cmd, os.path.join(raw, "cbomkit.log"))
+    log = os.path.join(raw, "cbomkit.log")
+    code = _run(cmd, log)
     out = os.path.join(raw, "cbomkit.cbom.json")
     produced = os.path.join(work, "cbom.json")
     if os.path.exists(produced):
         shutil.move(produced, out)
-    return _ok("cbomkit", out, code)
+    return _ok("cbomkit", out, code, log)
 
 
 def run_qryx(target: str, raw: str) -> list:
@@ -100,8 +119,9 @@ def run_qryx(target: str, raw: str) -> list:
     for tool, sub in (("qryx", "scan"), ("qryx-bin", "bin")):
         out = os.path.join(raw, f"{tool}.cbom.json")
         cmd = sandbox() + ["-v", f"{target}:/scan:ro", image, sub, "--format", "cbom", "/scan"]
-        code = _run(cmd, os.path.join(raw, f"{tool}.log"), stdout_path=out)
-        results.append(_ok(tool, out, code, ok_codes=(0, 1, 2)))
+        log = os.path.join(raw, f"{tool}.log")
+        code = _run(cmd, log, stdout_path=out)
+        results.append(_ok(tool, out, code, log, ok_codes=(0, 1, 2)))
     return results
 
 
